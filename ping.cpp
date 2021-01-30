@@ -10,6 +10,7 @@
 
 #include "ping.hpp"
 
+
 Ping::Ping(const char* s) : ip(inet_addr(s)), id(getpid()), seq(1)
 {
 }
@@ -21,10 +22,19 @@ void Ping::run()
 	socklen_t rlen;
 	char buff[BUFSIZ];
 
-	fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP);
+	if (getuid())
+	{
+		fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP);
+	}
+	else
+	{
+		fd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+	}
+
 	if (fd < 0)
 	{
 		perror("socket()");
+		exit(1);
 	}
 
 	raddr.sin_family = AF_INET;
@@ -54,7 +64,12 @@ int Ping::icmp_packet(struct icmp* my_icmp)
 	my_icmp->icmp_cksum = 0;
 	my_icmp->icmp_seq = static_cast<uint16_t>(seq++);
 	my_icmp->icmp_id = static_cast<uint16_t>(id);
-	gettimeofday(reinterpret_cast<struct timeval*>(my_icmp->icmp_data), NULL);
+	int ret = gettimeofday(reinterpret_cast<struct timeval*>(my_icmp->icmp_data), NULL);
+	if (ret < 0)
+	{
+		perror("gettimeofday()");
+		exit(-1);
+	}
 	my_icmp->icmp_cksum = static_cast<uint16_t>(chk_sum(my_icmp, 64));
 	return 1;
 }
@@ -94,7 +109,7 @@ int Ping::parse_packet(void* my_ip, int len)
 	struct timeval cur_time;
 	gettimeofday(&cur_time, NULL);
 
-	std::cout << "type = " << static_cast<int>(my_icmp->icmp_type) << "\t" << "seq = " << my_icmp->icmp_seq << "\t" << "time = " << cur_time.tv_usec - reinterpret_cast<struct timeval*>(my_icmp->icmp_data)->tv_usec << std::endl;
+	std::cout << "type = " << static_cast<int>(my_icmp->icmp_type) << "\t" << "seq = " << my_icmp->icmp_seq << "\t" << "time = " << cur_time.tv_usec - static_cast<double>(reinterpret_cast<struct timeval*>(my_icmp->icmp_data)->tv_usec) * 0.000001 << std::endl;
 	return 0;
 }
 
